@@ -1,0 +1,34 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8">
+    <title>Playlist</title>
+    <link rel="stylesheet" href="style.css">
+  </head>
+  <body>
+    <h1>playlist</h1>
+    <div class="row">
+      <label class="pick" for="filePicker">pick folder</label>
+      <input type="file" id="filePicker" multiple accept="audio/*">
+      <span id="fileCount" style="color:#666;font-size:0.85em"></span>
+    </div>
+    <div class="row">
+      repeat
+      <input type="number" id="repeatCount" value="5" min="1" max="99">
+      times per song
+    </div>
+    <div class="row">
+      <button id="prevBtn" disabled>prev</button>
+      <button id="playBtn" disabled>play</button>
+      <button id="pauseBtn" disabled>pause</button>
+      <button id="stopBtn" disabled>stop</button>
+      <button id="nextBtn" disabled>next</button>
+    </div>
+    <div id="track"></div>
+    <div id="progress"></div>
+    <div id="status">no files loaded</div>
+    <div id="list"></div>
+    <audio id="player"></audio>
+    <script src="player.js"></script>
+  </body>
+</html>
