@@ -1,4 +1,3 @@
-const player = document.getElementById('player');
 const playBtn = document.getElementById('playBtn');
 const pauseBtn = document.getElementById('pauseBtn');
 const prevBtn = document.getElementById('prevBtn');
@@ -9,6 +8,8 @@ const trackEl = document.getElementById('track');
 const progressEl = document.getElementById('progress');
 const listEl = document.getElementById('list');
 const repeatInput = document.getElementById('repeatCount');
+const speedSlider = document.getElementById('speedSlider');
+const speedLabel = document.getElementById('speedLabel');
 const fileCount = document.getElementById('fileCount');
 
 let files = [];
@@ -16,6 +17,20 @@ let trackIndex = 0;
 let repeatsDone = 0;
 let playing = false;
 let items = [];
+let audioCtx = null;
+let shifter = null;
+
+function getAudioCtx() {
+  if (!audioCtx) audioCtx = new AudioContext();
+  return audioCtx;
+}
+
+function stopShifter() {
+  if (shifter) {
+    shifter.disconnect();
+    shifter = null;
+  }
+}
 
 document.getElementById('filePicker').addEventListener('change', e => {
   const raw = Array.from(e.target.files).filter(f => f.type.startsWith('audio/'));
@@ -25,7 +40,7 @@ document.getElementById('filePicker').addEventListener('change', e => {
   trackIndex = 0;
   repeatsDone = 0;
   playing = false;
-  player.src = '';
+  stopShifter();
   renderList();
   if (files.length) {
     playBtn.disabled = false;
@@ -45,7 +60,7 @@ document.getElementById('filePicker').addEventListener('change', e => {
 function renderList() {
   listEl.innerHTML = '';
   items = [];
-  files.forEach((f, i) => {
+  files.forEach(f => {
     const div = document.createElement('div');
     div.className = 'item';
     div.textContent = f.name;
@@ -60,41 +75,85 @@ function updateList() {
   });
 }
 
-function loadTrack(index) {
-  const url = URL.createObjectURL(files[index]);
-  player.src = url;
-  trackEl.textContent = files[index].name;
-  updateList();
-}
-
 function updateProgress() {
   const repeats = parseInt(repeatInput.value) || 1;
   progressEl.textContent = `track ${trackIndex + 1}/${files.length} · repeat ${repeatsDone + 1}/${repeats}`;
 }
 
-playBtn.addEventListener('click', () => {
-  if (!files.length) return;
-  if (!playing) {
-    playing = true;
-    if (!player.src || player.ended || player.src === window.location.href) {
+async function loadTrack(index) {
+  stopShifter();
+  const file = files[index];
+  trackEl.textContent = file.name;
+  updateList();
+
+  const ctx = getAudioCtx();
+  await ctx.resume();
+
+  const audioBuffer = await ctx.decodeAudioData(await file.arrayBuffer());
+
+  let ended = false;
+  shifter = new PitchShifter(ctx, audioBuffer, 4096, () => {
+    if (ended) return;
+    ended = true;
+    onTrackEnd();
+  });
+  shifter.tempo = parseFloat(speedSlider.value);
+  shifter.connect(ctx.destination);
+
+  updateProgress();
+}
+
+function onTrackEnd() {
+  const repeats = parseInt(repeatInput.value) || 1;
+  repeatsDone++;
+  if (repeatsDone < repeats) {
+    loadTrack(trackIndex);
+  } else {
+    repeatsDone = 0;
+    trackIndex++;
+    if (trackIndex < files.length) {
+      prevBtn.disabled = false;
+      nextBtn.disabled = trackIndex === files.length - 1;
+      loadTrack(trackIndex);
+    } else {
+      stopShifter();
+      playing = false;
       trackIndex = 0;
-      repeatsDone = 0;
-      loadTrack(0);
+      statusEl.textContent = 'done';
+      trackEl.textContent = '';
+      progressEl.textContent = '';
+      playBtn.disabled = false;
+      pauseBtn.disabled = true;
+      stopBtn.disabled = true;
+      prevBtn.disabled = true;
+      nextBtn.disabled = true;
+      updateList();
     }
-    player.play();
-    statusEl.textContent = 'playing';
-    playBtn.disabled = true;
-    pauseBtn.disabled = false;
-    stopBtn.disabled = false;
-    prevBtn.disabled = trackIndex === 0;
-    nextBtn.disabled = trackIndex === files.length - 1;
-    updateProgress();
   }
+}
+
+playBtn.addEventListener('click', async () => {
+  if (!files.length) return;
+  playing = true;
+
+  if (audioCtx && audioCtx.state === 'suspended' && shifter) {
+    await audioCtx.resume();
+  } else {
+    await loadTrack(trackIndex);
+  }
+
+  statusEl.textContent = 'playing';
+  playBtn.disabled = true;
+  pauseBtn.disabled = false;
+  stopBtn.disabled = false;
+  prevBtn.disabled = trackIndex === 0;
+  nextBtn.disabled = trackIndex === files.length - 1;
+  updateProgress();
 });
 
-pauseBtn.addEventListener('click', () => {
-  if (playing) {
-    player.pause();
+pauseBtn.addEventListener('click', async () => {
+  if (playing && audioCtx) {
+    await audioCtx.suspend();
     playing = false;
     statusEl.textContent = 'paused';
     playBtn.disabled = false;
@@ -104,9 +163,9 @@ pauseBtn.addEventListener('click', () => {
   }
 });
 
-stopBtn.addEventListener('click', () => {
-  player.pause();
-  player.src = '';
+stopBtn.addEventListener('click', async () => {
+  stopShifter();
+  if (audioCtx) await audioCtx.suspend();
   playing = false;
   trackIndex = 0;
   repeatsDone = 0;
@@ -121,57 +180,29 @@ stopBtn.addEventListener('click', () => {
   updateList();
 });
 
-function jumpToTrack(index) {
+speedSlider.addEventListener('input', () => {
+  const speed = parseFloat(speedSlider.value);
+  speedLabel.textContent = speed.toFixed(2) + '×';
+  if (shifter) shifter.tempo = speed;
+});
+
+async function jumpToTrack(index) {
   repeatsDone = 0;
   trackIndex = index;
-  loadTrack(trackIndex);
   prevBtn.disabled = trackIndex === 0;
   nextBtn.disabled = trackIndex === files.length - 1;
   if (playing) {
-    player.play();
-    updateProgress();
+    await loadTrack(trackIndex);
+    statusEl.textContent = 'playing';
   } else {
+    stopShifter();
+    if (audioCtx) await audioCtx.suspend();
+    trackEl.textContent = files[trackIndex].name;
+    updateList();
     updateProgress();
     statusEl.textContent = 'paused';
   }
 }
 
-prevBtn.addEventListener('click', () => {
-  if (trackIndex > 0) jumpToTrack(trackIndex - 1);
-});
-
-nextBtn.addEventListener('click', () => {
-  if (trackIndex < files.length - 1) jumpToTrack(trackIndex + 1);
-});
-
-player.addEventListener('ended', () => {
-  const repeats = parseInt(repeatInput.value) || 1;
-  repeatsDone++;
-  if (repeatsDone < repeats) {
-    player.currentTime = 0;
-    player.play();
-    updateProgress();
-  } else {
-    repeatsDone = 0;
-    trackIndex++;
-    if (trackIndex < files.length) {
-      loadTrack(trackIndex);
-      player.play();
-      prevBtn.disabled = trackIndex === 0;
-      nextBtn.disabled = trackIndex === files.length - 1;
-      updateProgress();
-    } else {
-      playing = false;
-      trackIndex = 0;
-      statusEl.textContent = 'done';
-      trackEl.textContent = '';
-      progressEl.textContent = '';
-      playBtn.disabled = false;
-      pauseBtn.disabled = true;
-      stopBtn.disabled = true;
-      prevBtn.disabled = true;
-      nextBtn.disabled = true;
-      updateList();
-    }
-  }
-});
+prevBtn.addEventListener('click', () => { if (trackIndex > 0) jumpToTrack(trackIndex - 1); });
+nextBtn.addEventListener('click', () => { if (trackIndex < files.length - 1) jumpToTrack(trackIndex + 1); });

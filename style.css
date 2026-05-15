@@ -5,6 +5,8 @@ button { background: #333; color: #eee; border: 1px solid #555; padding: 6px 14p
 button:hover { background: #444; }
 button:disabled { opacity: 0.3; cursor: default; }
 input[type=number] { width: 50px; background: #222; color: #eee; border: 1px solid #555; padding: 4px 6px; font-family: monospace; text-align: center; }
+input[type=range] { width: 140px; accent-color: #888; }
+#speedLabel { color: #888; font-size: 0.85em; min-width: 3em; }
 input[type=file] { display: none; }
 label.pick { background: #333; color: #eee; border: 1px solid #555; padding: 6px 14px; cursor: pointer; font-family: monospace; }
 label.pick:hover { background: #444; }
